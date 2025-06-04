@@ -28,7 +28,7 @@ def validate_inputs(file_path, expected_shape=None):
 # ───── Paths & Constants ─────
 BASE_INPUT     = "/kaggle/working/data/dcase2025t2/dev_data/processed"
 PCA_PARAMS_DIR = "/kaggle/working/checkpoints/pca_params"
-PCA_OUTPUT_DIR = "/kaggle/working/data/dcase2025t2/dev_data/pca_128"
+PCA_OUTPUT_DIR = "/kaggle/working/data/dcase2025t2/dev_data/pca_128"  # Keep original name for compatibility
 
 machines = ["ToyCar","ToyTrain","bearing","fan","gearbox","slider","valve"]
 splits   = ["train","test","supplemental"]
@@ -53,18 +53,22 @@ if __name__ == "__main__":
             raise ValueError(f"Expected 2D array at {train_path}, got {X_train.shape}")
         D_total = X_train.shape[1]
 
-        # 1) Fit PCA on train only
+        # 1) Fit PCA on train only (changed to 1024 components)
         mean_vec = np.mean(X_train, axis=0)     # (D_total,)
         X_centered = X_train - mean_vec
-        pca = PCA(n_components=128, svd_solver="randomized", whiten=False)
+        pca = PCA(n_components=1024, svd_solver="randomized", whiten=False)
         pca.fit(X_centered)                    # (N_train, D_total)
-        comps = pca.components_                # (128, D_total)
+        comps = pca.components_                # (1024, D_total)
 
-        # Save PCA params
+        # Save PCA params with variance info
         os.makedirs(os.path.join(PCA_PARAMS_DIR, machine), exist_ok=True)
-        save_pickle({'mean': mean_vec, 'components': comps},
-                    os.path.join(PCA_PARAMS_DIR, machine, "pca_params.pkl"))
-        print(f"  ✔ PCA params saved for {machine} → comps (128×{D_total})")
+        save_pickle({
+            'mean': mean_vec,
+            'components': comps,
+            'explained_variance_ratio': pca.explained_variance_ratio_,
+            'explained_variance': pca.explained_variance_
+        }, os.path.join(PCA_PARAMS_DIR, machine, "pca_params.pkl"))
+        print(f"  ✔ PCA params saved for {machine} → comps (1024×{D_total})")
 
         # 2) Project each split
         for split in splits:
@@ -81,7 +85,7 @@ if __name__ == "__main__":
                 raise ValueError(f"Dim mismatch in {machine}/{split}: {X_split.shape[1]} vs {D_total}")
 
             Xc = X_split - mean_vec                        # center using train mean
-            Zpca = np.dot(Xc, comps.T)                     # (N_split, 128)
+            Zpca = np.dot(Xc, comps.T)                     # (N_split, 1024)
 
             out_dir = os.path.join(PCA_OUTPUT_DIR, machine, split)
             os.makedirs(out_dir, exist_ok=True)
